@@ -13,8 +13,8 @@ A local electronic-drum practice studio. Import a score, edit a groove, clean up
 - **Score editing:** import MusicXML/MXL percussion parts, edit notes across eight drum categories, set velocity and hand/foot labels, and add section reminders. Supports chords, multiple voices, tuplets, changing meters, and pickup measures. Imported off-grid note positions are preserved and accessible in the note list. Unknown instruments require manual mapping.
 - **PDF reference and correction:** preview the original PDF, extract embedded MusicXML when available, or connect a local Audiveris installation for optical music recognition. When recognition is unavailable or fails, the app creates an explicitly labeled empty correction score for manual entry. Ordinary PDFs do not automatically become notes without a working recognition engine.
 - **Recording workbench:** import audio or capture browser microphone/device input. Remove DC offset, apply a zero-phase 25 Hz high-pass filter and conservative spectral noise reduction, optionally normalize to −1 dBFS, and limit peaks. Compare original and processed audio and export processed audio as 24-bit WAV.
-- **Synchronized practice:** adjustable BPM, measure-based A/B ranges, looping, a count-in, and independent switches for the metronome, synthesized drums, and recording. Practice playback uses a shared Web Audio clock.
-- **Local projects:** score autosave in browser localStorage and JSON project import/export. A manual export can include the loaded PDF. Audio stays in memory and is not included in autosave or JSON exports; download it before refreshing.
+- **Synchronized practice:** adjustable BPM, measure-based A/B ranges, looping, a count-in, and independent switches for the metronome, drums, and recording. Practice playback uses a shared Web Audio clock.
+- **Local projects:** automatic saving to the local project library and JSON project import/export. The local project library now retains the loaded PDF and recordings. JSON exports include the PDF but exclude audio.
 
 ## Quick start
 
@@ -69,7 +69,7 @@ For optional optical recognition, install Java and [Audiveris](https://github.co
 -batch -export -output <temporary-directory> -- <PDF>
 ```
 
-The process has a 120-second timeout. Output is read from MXL/MusicXML. The successful optical recognition path has not been tested end to end with a real Audiveris installation. Embedded XML extraction and manual fallback have test coverage. You can also correct a score in Audiveris and import its exported MXL.
+The process has a 120-second timeout. Output is read from MXL/MusicXML. A local WSL installation of Audiveris 5.11.0 has now passed a real PDF-to-MXL-to-project import and browser playback test on one drum score; see [the validation report](AUDIVERIS_VALIDATION.md) (Chinese). This does not establish accuracy on other PDFs. Embedded XML extraction and manual fallback have test coverage. You can also correct a score in Audiveris and import its exported MXL.
 
 Review measure counts, meters, rests, simultaneous hits, tuplets, pickups, and drum mappings against the original. Unknown instruments block practice playback until mapped. Optical results always require review and have no calibrated confidence score. High/mid toms share one functional category; imported notes retain their original instrument IDs.
 
@@ -78,7 +78,7 @@ Review measure counts, meters, rests, simultaneous hits, tuplets, pickups, and d
 - A 25 ms scheduling task queues events within a 180 ms lookahead. Drum and metronome events use absolute AudioContext times; the playhead reads the same clock with requestAnimationFrame.
 - Recordings use native AudioBufferSourceNode loop boundaries. Playback rate is `practice BPM / recording BPM`; source position is `first-beat offset + preceding quarter-note beats × 60 / recording BPM`. Set the original BPM and first-beat offset manually.
 - If backgrounding or system suspension makes event scheduling fall behind, playback stops with a message. Actual electronic-drum input/output latency and long-term hardware drift have not been measured.
-- Speed changes also change pitch. There is no pitch-preserving time stretching, automatic BPM detection, automatic alignment, source separation, or recorded drum sample library. Demo drum sounds are synthesized.
+- Speed changes also change pitch. There is no pitch-preserving time stretching, automatic BPM detection, automatic alignment, or source separation; drum playback now offers recorded sample kits and the original synthesized kit.
 - Practice uses a fixed BPM. Imported tempo changes are stored in `tempos` but are not played back. Repeats and D.C./D.S. are not expanded. Grace notes require review; dynamics and expression markings are not fully interpreted, and imported velocity defaults to 90.
 - The grid only displays notes aligned to its selected subdivision. Off-grid notes remain in the note list and are played. Do not infer imported note counts from the grid alone.
 - Noise reduction can affect cymbal tails. Start with a low setting and compare. Limiting cannot reconstruct information already lost to clipping. Loop boundaries have no crossfade and may click at nonzero waveform cuts.
@@ -88,7 +88,7 @@ Review measure counts, meters, rests, simultaneous hits, tuplets, pickups, and d
 
 ## Storage and privacy
 
-Scores are automatically saved in the current browser's localStorage. Autosave excludes PDFs. Manual project exports include the score, warnings, and a loaded PDF, but exclude recordings. Audio is kept in memory: download the original and processed recording before refreshing or closing the page.
+Projects are automatically saved to the local backend database at `.local/projects/main.sqlite3`, including scores, reset baselines, original PDFs, recordings and practice settings. The sidebar reopens these projects after refresh. Browser storage is used for legacy migration, active-project selection and unfinished-edit recovery. JSON exports include the score and PDF but not audio, which can be downloaded separately.
 
 Score parsing and audio processing run on the local backend. There are no cloud processing calls or external font requests. The bundled interface font works offline after installation.
 
@@ -117,8 +117,12 @@ backend/main.py       API and built frontend serving
 backend/score.py      Safe MusicXML/MXL parsing
 backend/audio.py      Audio processing
 samples/              Example scores, PDF, audio, and project JSON
-tests/               Backend and browser tests
+tests/                Backend and browser tests
+public/sounds/        Licensed recordings and provenance
+public/licenses/      Third-party notices
+scripts/              Sample and font preparation
 public/fonts/         Offline font license
+AGENTS.md             Architecture, invariants and agent handoff
 run.py                Cross-platform setup and launcher
 VALIDATION.md         Recorded results and unverified areas
 ```
@@ -129,14 +133,16 @@ VALIDATION.md         Recorded results and unverified areas
 npm test
 .venv/bin/python -m pytest -q
 npm run build
-# Start the backend on port 8765 before browser tests:
+# Terminal 1: isolated browser-test backend, without OMR (Linux/WSL)
+AUDIVERIS_BIN= DRUMLAB_PROJECTS_DIR=/tmp/drumlab-e2e .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8766
+# Terminal 2:
 npx playwright install chromium
-npx playwright test
+DRUMLAB_TEST_URL=http://127.0.0.1:8766 npx playwright test
 ```
 
-Use `.venv\Scripts\python.exe` on Windows. The existing [validation record](VALIDATION.md), written in Chinese, reports **28 passing functional tests**: nine frontend tests, thirteen backend tests, and six browser tests. It also records a successful production build and dependency audit. These are recorded results for the stated environment, not a guarantee for every device or a fresh audit of current dependencies.
+Use `.venv\Scripts\python.exe` on Windows; in PowerShell set environment variables with `$env:NAME="value"`. The latest [validation record](VALIDATION.md), written in Chinese, reports **55 passing tests**: 17 frontend, 24 backend and 14 browser tests, plus a successful production build. Historical checks and unverified areas remain documented separately; this is not a guarantee for every device.
 
-Coverage includes exact note timing, recording offsets/rates/loops, changing meters, XML/MXL parsing, PDF fallback, audio frame and peak checks, project persistence, device capture with simulated input, and mobile layout. Real optical recognition and physical electronic-drum hardware remain unverified.
+Coverage includes exact note timing, recording offsets/rates/loops, changing meters, XML/MXL parsing, PDF fallback, audio frame and peak checks, project persistence, device capture with simulated input, and mobile layout. Real optical recognition has additionally been checked on one drum score (see the report above); physical electronic-drum hardware remains unverified.
 
 ## Troubleshooting
 
@@ -146,7 +152,7 @@ Coverage includes exact note timing, recording offsets/rates/loops, changing met
 | Port already in use | Add `--port 8766`; update the Vite proxy as well during development. |
 | No notes after PDF import | Configure Audiveris, enter notes manually, or import corrected MusicXML/MXL. An empty fallback score is expected when recognition fails. |
 | Recording does not cover the loop | Correct the recording BPM and first-beat offset, or shorten the selected range. |
-| Recording disappears after refresh | Audio is memory-only. Download it separately before refreshing. |
+| Recording disappears after refresh | Reopen the local project from the sidebar. Legacy recordings that were never saved cannot be recovered. |
 | Device recording fails | Use localhost/HTTPS and check microphone permission and the selected USB input. |
 | Audio format cannot be decoded | Use WAV/FLAC/OGG; other formats depend on browser support. |
 
@@ -165,3 +171,57 @@ No source-code license has been selected for this project yet. The bundled font 
 - [MusicXML duration](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/duration/)
 - [Web Audio source scheduling](https://developer.mozilla.org/en-US/docs/Web/API/AudioBufferSourceNode/start)
 - [Audiveris CLI](https://github.com/Audiveris/audiveris/wiki/CLI-Arguments)
+
+## Local Audiveris setup
+
+This machine uses a WSL/Linux installation in `.tools/audiveris/`, including its own Java runtime. English OCR data and caches live in `.local/audiveris/`. These machine-local directories are excluded from Git. `run.py` automatically uses `.tools/audiveris-drumlab.sh` if present; an explicit `AUDIVERIS_BIN` takes priority.
+
+On Windows, `Start-DrumLab-WSL.bat` launches this installation through the default WSL distribution, which must match the environment used for setup. The original `Start-DrumLab.bat` uses native Windows Python and cannot directly run the Linux engine.
+
+For the official Ophelia example, select its JazzPerc font and small-note options:
+
+```bash
+python3 run.py --open --omr-font JazzPerc --omr-small-notes
+```
+
+Use the default settings for ordinary printed fonts. For direct backend startup, set `AUDIVERIS_BIN` to the absolute path of the local wrapper. Optional environment variables are `AUDIVERIS_MUSIC_FONT=JazzPerc` (or `Bravura`) and `AUDIVERIS_SMALL_NOTES=true`. Match settings to the input score.
+
+The import enables percussion processing, handles confirmed zero-based Audiveris percussion exports without shifting standard MusicXML files, and warns about overfull measures while retaining the original events for review.
+
+## Reset and original-PDF playback
+
+After importing a score, use the editor's reset button to restore all imported measures, notes, annotations, and PDF locations after confirmation. The baseline survives autosave and JSON export/import. Legacy autosaved scores without a baseline require reimport; opening a legacy JSON establishes its current content as the baseline.
+
+PDF imports show a rasterized original-page player. Start practice to highlight the current measure and move a beat cursor, with tempo changes, looping, scrolling, and page following. Automatic positions come from Audiveris `.omr` source coordinates and rhythm anchors, not MusicXML's reflowed layout. Mismatched measure counts are not automatically paired.
+
+For missing positions, select a measure, click its locate button, then drag a box on the relevant PDF page. Manual boxes use proportional beat movement. Editing the functional score does not redraw the original PDF. The local project library now retains the PDF across refresh and project switches. Legacy caches without the PDF require one reimport.
+
+## Recorded drum kits and video export
+
+The practice panel offers **Black Pearl** (default, punk/rock-oriented), **Red Zeppelin** (larger, heavier rock drums), and the original lightweight synthesized kit, with an audition button. Both recorded selections come from Glen MacArthur's [AVL Drumkits](https://www.bandshed.net/avldrumkits/): eight drum articulations per kit, with all five original velocity layers (80 recordings total). They are converted to local Ogg Vorbis files (~1.7 MB combined), retaining the original sample rates, channel layouts and full tails. Open hi-hat uses HatSwish. Kit choice is saved with the project, and closed hi-hats choke open hats.
+
+The adapted libraries use the distinct names DrumLab Black Pearl Selection / DrumLab Red Zeppelin Selection. They remain CC-BY-SA 3.0 with the author's exception for produced music; see [sample licensing](public/sounds/LICENSE.txt) and [per-file provenance](public/sounds/manifest.json). No remote sample service is required during playback.
+
+Use the video export button after setting the practice tempo and measure range. Choose the original PDF with a following cursor (all selected measures must have locations), or the functional score grid, and select MP4/WebM and 1–8 passes. The video includes the selected drums, metronome, count-in and synchronized recording switches. Preview, download and cancellation are available.
+
+Videos use local offline mixing and timestamped frame encoding at 1280×720/30 fps, rather than screen or microphone capture. Export speed depends on the device and need not match playback duration. Maximum length is ten minutes, including a half-second tail. Available codecs depend on the browser; a current Chrome/Edge is recommended. MP4 does not imply one fixed video codec.
+
+[Mediabunny](https://github.com/Vanilagy/mediabunny) is loaded on demand for encoding/muxing; its MPL-2.0 license and exact source package are listed in [third-party notices](public/licenses/NOTICE.txt). Sample preparation is reproducible with `scripts/prepare_drum_samples.py`; `scripts/subset_font.py` rebuilds the offline UI font after adding Chinese text (requires fonttools and brotli for development only).
+
+## Local project history
+
+The sidebar groups projects by recent modification time, with score previews, PDF/audio indicators, search, new/import actions, renaming, confirmed deletion and a collapsible mobile drawer. Each import creates a separate project.
+
+The backend stores the full project library in `.local/projects/main.sqlite3`, including original and processed recordings, PDFs, reset baselines, selected drum kit, tempo/range, audio alignment and workspace settings. Switching flushes pending saves and restores the destination project's own media. The status indicator distinguishes saving, saved and failed states. Wait for the saved state before closing while large recordings are being written.
+
+Back up the database file while the service is stopped. `.local/` is excluded from Git; no project history is uploaded to a cloud service. `DRUMLAB_PROJECTS_DIR` can override the local directory. Workspace separation used by browser tests is not authentication; the application remains a local single-user tool.
+
+A small browser recovery snapshot protects unfinished score edits on refresh. Revision checks reject stale writes from another window; a conflicting recovery snapshot is saved as a separate project. First launch migrates the last readable legacy cache. Older overwritten records, and PDFs/audio never stored by the old version, require reimport.
+
+## Audiveris and repository boundaries
+
+DrumLab uses the complete official engine through a small command-line adapter; it does not maintain an Audiveris source fork. The current machine's ignored `.tools/` installation/wrapper is absent on fresh clones. Basic editing, MusicXML import, recording and video export do not require Audiveris.
+
+For optical PDF recognition on another machine, install a matching native package from [official releases](https://github.com/Audiveris/audiveris/releases) (5.11.0 was tested), point `AUDIVERIS_BIN` to its actual CLI executable, then start DrumLab. Follow the package's runtime requirements; neither Java nor the engine is bundled in this repository. Native Windows executables and WSL/Linux binaries are separate.
+
+The production `dist/`, licensed sample selections, fonts and small test fixtures are intentionally tracked. Local libraries, personal media/exports, runtimes, dependencies, credentials and test artifacts are excluded. Future agents should start with [AGENTS.md](AGENTS.md).

@@ -18,7 +18,16 @@ parser=argparse.ArgumentParser(description='启动 DrumLab 本地工作室')
 parser.add_argument('--setup',action='store_true',help='创建 Python 环境、安装依赖并构建前端')
 parser.add_argument('--open',action='store_true',help='打开浏览器')
 parser.add_argument('--port',type=int,default=8765)
+parser.add_argument('--omr-font',choices=['Bravura','JazzPerc'],help='按原谱选择识谱字体')
+parser.add_argument('--omr-small-notes',action='store_true',help='启用小符头和小连梁识别')
 args=parser.parse_args()
+if args.omr_font: os.environ['AUDIVERIS_MUSIC_FONT']=args.omr_font
+if args.omr_small_notes: os.environ['AUDIVERIS_SMALL_NOTES']='true'
+# Use the project-local engine when installed; an explicit setting takes priority.
+local_omr=ROOT/'.tools'/'audiveris-drumlab.sh'
+if os.name!='nt' and not os.environ.get('AUDIVERIS_BIN') and local_omr.is_file():
+    os.environ['AUDIVERIS_BIN']=str(local_omr)
+
 python=ROOT/'.venv'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
 def run(command): subprocess.run([str(v) for v in command],cwd=ROOT,check=True)
 try:

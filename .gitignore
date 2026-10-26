@@ -1,7 +1,59 @@
+# Dependencies and local runtimes
 node_modules/
 .venv/
+venv/
+.tools/
+
+# Private project library, imported media, generated exports and backups
+.local/
+/uploads/
+/recordings/
+/exports/
+/downloads/
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+*.omr
+
+# Credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc.local
+
+# Build caches and test output
 __pycache__/
+*.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
 *.tsbuildinfo
+coverage/
+.coverage
+htmlcov/
 test-results/
 playwright-report/
+
+# Temporary/editor/OS files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+
+# Intentionally versioned: dist/, public/sounds/, font assets, and samples/.
+# Do not ignore all PDF/WAV/OGG/MXL files: licensed assets and fixtures are shipped.

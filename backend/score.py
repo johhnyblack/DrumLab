@@ -4,6 +4,8 @@ import zipfile
 from fractions import Fraction
 from defusedxml import ElementTree as ET
 
+GM_NAMES = {'Acoustic_Bass_Drum':35,'Bass_Drum_1':36,'Side_Stick':37,'Acoustic_Snare':38,'Electric_Snare':40,'Low_Floor_Tom':41,'Closed_Hi_Hat':42,'High_Floor_Tom':43,'Pedal_Hi_Hat':44,'Low_Tom':45,'Open_Hi_Hat':46,'Low_Mid_Tom':47,'Hi_Mid_Tom':48,'Crash_Cymbal_1':49,'High_Tom':50,'Ride_Cymbal_1':51,'Crash_Cymbal_2':57,'Ride_Cymbal_2':59}
+
 GM = {35:'kick',36:'kick',37:'snare',38:'snare',40:'snare',42:'hihat',44:'hihat',46:'openhat',41:'floor',43:'floor',45:'tom',47:'tom',48:'tom',50:'tom',49:'crash',57:'crash',51:'ride',59:'ride'}
 
 def xml_payload(data: bytes, filename: str) -> bytes:
@@ -25,15 +27,24 @@ def parse_score(data: bytes, filename: str):
     if root.tag != 'score-partwise': raise ValueError('MVP 支持 score-partwise MusicXML；请从制谱软件导出此格式')
     instruments = {}
     names = {}
+    warnings = []
+    audiveris = any((e.text or '').startswith('Audiveris ') for e in root.findall('./identification/encoding/software'))
     for part in root.findall('./part-list/score-part'):
         names[part.get('id')] = part.findtext('part-name','Part')
+        # Some Audiveris/ProxyMusic exports use zero-based MIDI keys instead of
+        # MusicXML's one-based values. Require provenance plus consistent named
+        # instrument evidence; never shift ordinary MusicXML by guessing.
+        named = {e.get('id'): GM_NAMES.get(e.findtext('instrument-name','')) for e in part.findall('score-instrument')}
+        evidence = [(int(e.findtext('midi-unpitched','0')),named[e.get('id')]) for e in part.findall('midi-instrument') if named.get(e.get('id')) is not None and e.find('midi-unpitched') is not None]
+        zero_based = audiveris and len(evidence)>=2 and all(raw==gm for raw,gm in evidence)
+        if zero_based:
+            warnings.append('已兼容 Audiveris 零起算打击乐编号；依据导出软件和鼓件名称校验，仍请核对原谱')
         for inst in part.findall('midi-instrument'):
-            midi = int(inst.findtext('midi-unpitched','0'))-1
+            midi = int(inst.findtext('midi-unpitched','0'))-(0 if zero_based else 1)
             instruments[inst.get('id')] = GM.get(midi, 'unknown:'+str(midi))
     parts = root.findall('part')
     drum_parts = [p for p in parts if p.find('.//unpitched') is not None or any(si.get('id')==p.get('id') and si.find('.//midi-unpitched') is not None for si in root.findall('./part-list/score-part'))]
     if not drum_parts: raise ValueError('未找到打击乐声部；需要 unpitched 或 midi-unpitched 信息')
-    warnings = []
     measures = []
     tempos = []
     for part in drum_parts:
@@ -78,6 +89,8 @@ def parse_score(data: bytes, filename: str):
                     bpm=sound.get('tempo') if sound is not None else None
                     if bpm:
                         tempos.append({'beat':float(start+cursor),'bpm':float(bpm)})
+            if maximum>nominal and m.get('implicit')!='yes':
+                warnings.append(f'小节 {idx+1} 音符时值超出拍号（{float(maximum):g} / {float(nominal):g} 个四分音符），请人工校正节奏')
             length=maximum if m.get('implicit')=='yes' and maximum>0 else max(nominal,maximum)
             if idx>=len(measures):
                 measures.append({'id':f'm{idx+1}','number':idx+1,'beats':float(length),'time':[numerator,denominator],'label':'','notes':notes})

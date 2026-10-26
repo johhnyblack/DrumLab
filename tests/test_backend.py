@@ -126,10 +126,105 @@ def test_invalid_omr_output_preserves_manual_fallback(monkeypatch):
     import backend.main as main
     monkeypatch.setenv('AUDIVERIS_BIN','test-engine')
     def invalid_output(args,**kwargs):
-        Path(args[4],'invalid.musicxml').write_bytes(b'invalid xml')
+        Path(args[args.index('-output')+1],'invalid.musicxml').write_bytes(b'invalid xml')
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr(main.subprocess,'run',invalid_output)
     doc=fitz.open();doc.new_page()
     response=client.post('/api/import',files={'file':('score.pdf',doc.tobytes())})
     assert response.status_code==200 and response.json()['needsReview']
     assert response.json()['measures'][0]['notes']==[]
+
+
+def test_pdf_omr_success_uses_percussion_switches(monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+    import backend.main as main
+    monkeypatch.setenv('AUDIVERIS_BIN','test-engine')
+    def recognized_output(args,**kwargs):
+        assert 'org.audiveris.omr.sheet.ProcessingSwitches.drumNotation=true' in args
+        assert 'org.audiveris.omr.sheet.ProcessingSwitches.oneLineStaves=true' in args
+        assert kwargs['timeout']==120
+        Path(args[args.index('-output')+1],'recognized.musicxml').write_bytes(XML)
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(main.subprocess,'run',recognized_output)
+    doc=fitz.open();doc.new_page()
+    response=client.post('/api/import',files={'file':('score.pdf',doc.tobytes())})
+    assert response.status_code==200
+    score=response.json()
+    assert len(score['measures'])==2
+    assert len(score['measures'][0]['notes'])==5
+    assert score['needsReview'] and score['pdf']
+    assert score['source']=='score.pdf'
+    assert any('光学识谱' in w for w in score['warnings'])
+
+
+def audiveris_xml(zero_based):
+    xml=XML.replace(b'<work>',b'<identification><encoding><software>Audiveris 5.11.0</software></encoding></identification><work>',1)
+    names=b'<score-instrument id="BD"><instrument-name>Bass_Drum_1</instrument-name></score-instrument><score-instrument id="SN"><instrument-name>Acoustic_Snare</instrument-name></score-instrument><score-instrument id="HH"><instrument-name>Closed_Hi_Hat</instrument-name></score-instrument>'
+    xml=xml.replace(b'<part-name>Drums</part-name>',b'<part-name>Drums</part-name>'+names)
+    if zero_based:
+        for old,new in [(37,36),(39,38),(43,42)]:
+            xml=xml.replace(f'<midi-unpitched>{old}</midi-unpitched>'.encode(),f'<midi-unpitched>{new}</midi-unpitched>'.encode())
+    return xml
+
+
+@pytest.mark.parametrize('zero_based',[False,True])
+def test_audiveris_midi_numbering_with_named_evidence(zero_based):
+    score=parse_score(audiveris_xml(zero_based),'audiveris.musicxml')
+    assert [n['instrument'] for n in score['measures'][0]['notes'][:3]]==['kick','hihat','snare']
+    assert any('零起算' in w for w in score['warnings'])==zero_based
+
+
+def test_other_exporters_are_not_shifted_from_instrument_names():
+    score=parse_score(audiveris_xml(True).replace(b'Audiveris 5.11.0',b'Other exporter'),'other.musicxml')
+    assert score['measures'][0]['notes'][1]['instrument']=='floor'
+
+
+def test_overfull_measure_warns_without_discarding_notes():
+    score=parse_score(XML.replace(b'<duration>36</duration>',b'<duration>60</duration>',1),'overfull.musicxml')
+    assert any('超出拍号' in w for w in score['warnings'])
+    assert len(score['measures'][0]['notes'])==5
+
+
+def make_omr(path,stacks=2):
+    with zipfile.ZipFile(path,'w') as z:
+        xml='<sheet><picture width="1000" height="2000"/><scale><interline main="10"/></scale><page><system>'
+        for i in range(stacks):
+            xml+=f'<stack left="{100+i*400}" right="{500+i*400}"><slot x-offset="20" time-offset="0"/><slot x-offset="200" time-offset="1/4"/></stack>'
+        xml+='<part><staff><lines><line><point x="100" y="200"/><point x="900" y="240"/></line></lines></staff></part></system></page></sheet>'
+        z.writestr('sheet#1/sheet#1.xml',xml)
+
+
+def test_omr_original_coordinates_and_quarter_note_anchors(tmp_path):
+    from backend.pdf_map import attach_pdf_regions
+    p=tmp_path/'score.omr';make_omr(p)
+    score=parse_score(XML,'score.xml')
+    assert attach_pdf_regions(score,p)
+    r=score['measures'][0]['pdfRegion']
+    assert r['page']==0 and r['x']==.1 and r['width']==.4
+    assert r['y']==.085 and r['height']==.05
+    assert r['anchors']==[{'beat':0,'x':.12},{'beat':1,'x':.3}]
+
+
+def test_omr_measure_mismatch_does_not_assign_wrong_positions(tmp_path):
+    from backend.pdf_map import attach_pdf_regions
+    p=tmp_path/'score.omr';make_omr(p,stacks=1)
+    score=parse_score(XML,'score.xml')
+    assert not attach_pdf_regions(score,p)
+    assert all('pdfRegion' not in m for m in score['measures'])
+
+
+def test_bundled_real_drum_samples_have_five_layers_and_valid_audio():
+    from pathlib import Path
+    import json,hashlib
+    root=Path(__file__).resolve().parents[1]/'public/sounds'
+    manifest=json.loads((root/'manifest.json').read_text())
+    assert len(manifest)==80
+    for kit in ['black-pearl','red-zeppelin']:
+        for instrument in ['kick','snare','hihat','openhat','tom','floor','crash','ride']:
+            assert {m['layer'] for m in manifest if m['kit']==kit and m['instrument']==instrument}=={1,2,3,4,5}
+    for entry in manifest:
+        file=root/entry['file'];info=sf.info(file)
+        assert hashlib.sha256(file.read_bytes()).hexdigest()==entry['sha256']
+        assert info.frames==entry['frames'] and info.samplerate==entry['sampleRate']
+        assert info.channels==entry['channels'] and info.frames>1000

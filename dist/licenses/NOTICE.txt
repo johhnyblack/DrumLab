@@ -1,0 +1,8 @@
+Mediabunny 1.62.1 — Copyright (c) Vanilagy and contributors.
+Used unmodified for browser video/audio encoding and MP4/WebM muxing.
+License: Mozilla Public License 2.0 (Mediabunny-MPL-2.0.txt).
+Source repository: https://github.com/Vanilagy/mediabunny
+Exact distributed package: https://registry.npmjs.org/mediabunny/-/mediabunny-1.62.1.tgz
+
+AVL Drumkits adapted selections: see /sounds/LICENSE.txt and /sounds/manifest.json.
+Offline Noto UI font: see the repository's public/fonts/LICENSE.txt.
