@@ -146,7 +146,7 @@ binary is not a native Windows executable.
 Current options: `--omr-font Bravura|JazzPerc`, `--omr-small-notes`;
 `AUDIVERIS_MUSIC_FONT`, `AUDIVERIS_SMALL_NOTES=true` are backend equivalents.
 Percussion switches are always passed. Do not globally use JazzPerc because it
-worked for Ophelia. The engine has a 120-second timeout and recognition always
+worked for Ophelia. The engine has a 1200-second timeout and recognition always
 requires review. Single-score success is not an accuracy benchmark.
 
 ## Assets, docs and publishing
@@ -171,3 +171,5 @@ aligned, verify the final tree and ref, and do not store connector credentials.
 ## Bilibili video PDF
 
 `backend/video_pdf.py` fetches public single-part BV videos and stitches vertically scrolling frames into an image PDF. It limits video duration and size and restricts accepted hosts. The result is a visual reconstruction, not MusicXML; users must review stitching and any subsequent OMR. The UI is `src/VideoPdf.tsx`. OpenCV is a backend runtime dependency.
+
+Oversized PDF pages are scaled proportionally only for OMR in `omr_safe_pdf`; original PDF media and normalized coordinates remain unchanged. Video PDF pages use 612-point width to avoid exceeding Audiveris raster limits. Keep the 8-million-pixel bound at 300 DPI to avoid excessive processing time.

@@ -113,7 +113,9 @@ def _stitch(path: Path) -> bytes:
         ok, encoded = cv2.imencode('.png', image)
         if not ok:
             raise ValueError('谱面图片生成失败')
-        page = doc.new_page(width=width, height=image.shape[0])
+        # PDF dimensions are points, not pixels. Audiveris rasterizes PDFs at
+        # 300 DPI, so using the video width as points can exceed its pixel limit.
+        page = doc.new_page(width=612, height=612 * image.shape[0] / width)
         page.insert_image(page.rect, stream=encoded.tobytes())
         top = end
     result = doc.tobytes(deflate=True)

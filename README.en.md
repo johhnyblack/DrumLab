@@ -69,7 +69,7 @@ For optional optical recognition, install Java and [Audiveris](https://github.co
 -batch -export -output <temporary-directory> -- <PDF>
 ```
 
-The process has a 120-second timeout. Output is read from MXL/MusicXML. A local WSL installation of Audiveris 5.11.0 has now passed a real PDF-to-MXL-to-project import and browser playback test on one drum score; see [the validation report](AUDIVERIS_VALIDATION.md) (Chinese). This does not establish accuracy on other PDFs. Embedded XML extraction and manual fallback have test coverage. You can also correct a score in Audiveris and import its exported MXL.
+The process has a 20-minute timeout. Output is read from MXL/MusicXML. A local WSL installation of Audiveris 5.11.0 has now passed a real PDF-to-MXL-to-project import and browser playback test on one drum score; see [the validation report](AUDIVERIS_VALIDATION.md) (Chinese). This does not establish accuracy on other PDFs. Embedded XML extraction and manual fallback have test coverage. You can also correct a score in Audiveris and import its exported MXL.
 
 Review measure counts, meters, rests, simultaneous hits, tuplets, pickups, and drum mappings against the original. Unknown instruments block practice playback until mapped. Optical results always require review and have no calibrated confidence score. High/mid toms share one functional category; imported notes retain their original instrument IDs.
 
@@ -229,3 +229,5 @@ The production `dist/`, licensed sample selections, fonts and small test fixture
 ## Bilibili scrolling scores to PDF
 
 Choose “B 站视频转 PDF” on the score page and enter a public, single-part Bilibili BV link. The app stitches vertically scrolling video frames into an image-based PDF that can be downloaded or imported. Videos are limited to 15 minutes. Quality depends on the available video resolution; check all pages for missing material, stitching artifacts and playback cursors. Horizontal scrolling, cuts and videos requiring login are not supported. Importing the PDF for editable notes requires Audiveris and manual review.
+
+Before optical recognition, oversized PDF pages are scaled proportionally to stay within Audiveris image limits; the original PDF remains in the project. PDFs generated from videos use page dimensions suitable for recognition. Processing time and results vary with the score, and notes still require review.

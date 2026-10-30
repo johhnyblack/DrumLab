@@ -122,13 +122,12 @@ def test_broken_omr_engine_preserves_manual_fallback(monkeypatch):
 
 def test_invalid_omr_output_preserves_manual_fallback(monkeypatch):
     from pathlib import Path
-    from types import SimpleNamespace
     import backend.main as main
     monkeypatch.setenv('AUDIVERIS_BIN','test-engine')
     def invalid_output(args,**kwargs):
         Path(args[args.index('-output')+1],'invalid.musicxml').write_bytes(b'invalid xml')
-        return SimpleNamespace(returncode=0)
-    monkeypatch.setattr(main.subprocess,'run',invalid_output)
+        return 0
+    monkeypatch.setattr(main,'run_omr',invalid_output)
     doc=fitz.open();doc.new_page()
     response=client.post('/api/import',files={'file':('score.pdf',doc.tobytes())})
     assert response.status_code==200 and response.json()['needsReview']
@@ -137,16 +136,14 @@ def test_invalid_omr_output_preserves_manual_fallback(monkeypatch):
 
 def test_pdf_omr_success_uses_percussion_switches(monkeypatch):
     from pathlib import Path
-    from types import SimpleNamespace
     import backend.main as main
     monkeypatch.setenv('AUDIVERIS_BIN','test-engine')
     def recognized_output(args,**kwargs):
         assert 'org.audiveris.omr.sheet.ProcessingSwitches.drumNotation=true' in args
         assert 'org.audiveris.omr.sheet.ProcessingSwitches.oneLineStaves=true' in args
-        assert kwargs['timeout']==120
         Path(args[args.index('-output')+1],'recognized.musicxml').write_bytes(XML)
-        return SimpleNamespace(returncode=0)
-    monkeypatch.setattr(main.subprocess,'run',recognized_output)
+        return 0
+    monkeypatch.setattr(main,'run_omr',recognized_output)
     doc=fitz.open();doc.new_page()
     response=client.post('/api/import',files={'file':('score.pdf',doc.tobytes())})
     assert response.status_code==200

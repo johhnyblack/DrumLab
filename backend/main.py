@@ -1,6 +1,8 @@
 import base64
 import io
 import os
+import math
+import signal
 from pathlib import Path
 import subprocess
 import tempfile
@@ -22,6 +24,35 @@ async def read_upload(file):
     data=await file.read(MAX_UPLOAD+1)
     if len(data)>MAX_UPLOAD: raise HTTPException(413,'文件超过 32 MB')
     return data
+
+def omr_safe_pdf(data: bytes) -> bytes:
+    """Preserve page proportions while keeping 300-DPI rasterization bounded."""
+    with fitz.open(stream=data,filetype='pdf') as source:
+        scales=[min(1.0, math.sqrt(8_000_000 / (page.rect.width * page.rect.height * (300/72)**2))) for page in source]
+        if all(scale == 1 for scale in scales): return data
+        with fitz.open() as resized:
+            for index, scale in enumerate(scales):
+                rect=source[index].rect
+                page=resized.new_page(width=rect.width*scale,height=rect.height*scale)
+                page.show_pdf_page(page.rect,source,index)
+            return resized.tobytes(deflate=True)
+
+def run_omr(args, timeout=1200):
+    """Stop the entire engine process tree on timeout, including its JVM."""
+    process=subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=os.name != 'nt')
+    try:
+        return process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == 'nt':
+            subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            if process.poll() is None: process.kill()
+        else:
+            try: os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError: pass
+        process.wait()
+        raise
 
 @app.get('/api/health')
 def health(): return {'ok':True,'omr':bool(os.environ.get('AUDIVERIS_BIN'))}
@@ -56,8 +87,9 @@ async def import_score(file: UploadFile=File(...)):
             reason='未配置本机光学识谱引擎。'
             command=os.environ.get('AUDIVERIS_BIN')
             if command:
-                with tempfile.TemporaryDirectory() as tmp:
-                    source=Path(tmp)/'score.pdf'; source.write_bytes(data)
+                # Windows may briefly keep engine log files open after the process exits.
+                with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+                    source=Path(tmp)/'score.pdf'; source.write_bytes(omr_safe_pdf(data))
                     try:
                         args=[command,'-batch','-export','-output',tmp,
                             '-constant','org.audiveris.omr.sheet.ProcessingSwitches.drumNotation=true',
@@ -68,9 +100,9 @@ async def import_score(file: UploadFile=File(...)):
                         if os.environ.get('AUDIVERIS_SMALL_NOTES')=='true':
                             args+=['-constant','org.audiveris.omr.sheet.ProcessingSwitches.smallHeads=true',
                                    '-constant','org.audiveris.omr.sheet.ProcessingSwitches.smallBeams=true']
-                        result=subprocess.run(args+['--',str(source)],capture_output=True,timeout=120)
+                        returncode=run_omr(args+['--',str(source)])
                         candidates=list(Path(tmp).rglob('*.mxl'))+list(Path(tmp).rglob('*.musicxml'))
-                        if result.returncode==0 and candidates:
+                        if returncode==0 and candidates:
                             score=parse_score(candidates[0].read_bytes(),candidates[0].name)
                             mapped=False
                             for omr in sorted(Path(tmp).rglob('*.omr')):
@@ -88,6 +120,8 @@ async def import_score(file: UploadFile=File(...)):
                             score['warnings'].append('PDF 光学识谱结果必须逐小节核对；未提供经数据集校准的置信度')
                             score['pdf']=base64.b64encode(data).decode(); return score
                         reason='光学识谱引擎未产出可用 MusicXML。'
+                    except subprocess.TimeoutExpired:
+                        reason='光学识谱超过 20 分钟，已停止识别。'
                     except Exception:
                         reason='光学识谱引擎不可用、超时或产出无效，已切换为人工校正。'
             return {'title':name,'bpm':100,'measures':[{'id':'m1','number':1,'beats':4,'time':[4,4],'label':'待人工录入','notes':[]}], 'warnings':[f'PDF 共 {pages} 页。{reason}未获得可用自动识谱结果，当前为空白校正谱，绝非识别出的音符。可对照左侧原谱手动录入，或先从 Audiveris 导出 MXL 再导入。'],'needsReview':True,'source':name,'pdf':base64.b64encode(data).decode(),'pdfPageCount':pages,'tempos':[]}

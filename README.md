@@ -67,7 +67,7 @@ MVP 没有声称某个百分比准确率：未提供真实鼓谱标注数据集�
 
 已测试 MusicXML 的黄金样例含 5 个音符事件，预期鼓件与时值逐项断言；PDF 测试确认失败结果为 0 个识别音符而非编造数据。光学结果统一标记需要人工核对，不生成未经校准的“置信度”。
 
-可选安装 Java 与 [Audiveris](https://github.com/Audiveris/audiveris)，将 `AUDIVERIS_BIN` 设置为本机可执行文件/启动脚本的绝对路径，再重启服务。后端执行 `-batch -export -output <临时目录> -- <PDF>`，120 秒超时，读取输出 MXL。本机 WSL 已安装 Audiveris 5.11.0，真实 PDF → MXL → 项目导入及浏览器播放已通过单份鼓谱验证，详见 [Audiveris 实测记录](AUDIVERIS_VALIDATION.md)。这不代表所有 PDF 均可正确识别；手工兜底及内嵌 XML 路径也有测试覆盖。识别失败后可先在 Audiveris GUI 校正并导出 MXL 再导入。
+可选安装 Java 与 [Audiveris](https://github.com/Audiveris/audiveris)，将 `AUDIVERIS_BIN` 设置为本机可执行文件/启动脚本的绝对路径，再重启服务。后端执行 `-batch -export -output <临时目录> -- <PDF>`，20 分钟超时，读取输出 MXL。本机 WSL 已安装 Audiveris 5.11.0，真实 PDF → MXL → 项目导入及浏览器播放已通过单份鼓谱验证，详见 [Audiveris 实测记录](AUDIVERIS_VALIDATION.md)。这不代表所有 PDF 均可正确识别；手工兜底及内嵌 XML 路径也有测试覆盖。识别失败后可先在 Audiveris GUI 校正并导出 MXL 再导入。
 
 人工核对建议：逐页比对小节数、拍号、休止、同拍组合、三连音、弱起、鼓件位置；不确定的鼓件保留未知映射。未经映射的音符会阻止练习播放。可将通鼓类音符重新映射为其他鼓件；本版 GM 高/中通鼓统一归类为“通鼓”，原 instrument ID 保存在每个导入音符的 originalInstrument 字段。
 
@@ -203,3 +203,5 @@ python3 run.py --open --omr-font JazzPerc --omr-small-notes
 ## B 站动态鼓谱转 PDF
 
 在鼓谱页面选择「B 站视频转 PDF」，粘贴公开、单 P 的 B 站 BV 链接，即可拼接纵向滚动的谱面并下载图片型 PDF；也可以再导入本地项目。视频最长 15 分钟。清晰度取决于 B 站提供的画质；视频中的播放标记、拼接或分页可能影响谱面，请逐页核对。此功能不适用于横向滚动、切镜或需要登录才能播放的视频。导入 PDF 后的识谱需要 Audiveris，并且识别出的音符仍需人工核对。
+
+导入 PDF 时，过大的页面会在识谱前按比例缩小，以避免 Audiveris 的图像尺寸上限；原始 PDF 仍会保存在项目中。B 站视频生成的 PDF 使用适合识谱的页面尺寸。识谱时间和结果取决于谱面质量，仍需逐小节核对。
