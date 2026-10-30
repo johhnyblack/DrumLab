@@ -9,6 +9,7 @@ import pymupdf as fitz
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.concurrency import run_in_threadpool
 from .score import parse_score
 from .audio import repair_audio
 from .pdf_map import attach_pdf_regions
@@ -24,6 +25,17 @@ async def read_upload(file):
 
 @app.get('/api/health')
 def health(): return {'ok':True,'omr':bool(os.environ.get('AUDIVERIS_BIN'))}
+
+@app.post('/api/video-pdf')
+async def video_pdf(url: str=Form(...)):
+    try:
+        from .video_pdf import create_video_pdf
+        data=await run_in_threadpool(create_video_pdf,url)
+        return Response(data,media_type='application/pdf')
+    except ValueError as e:
+        raise HTTPException(422,str(e)) from e
+    except Exception as e:
+        raise HTTPException(502,'视频获取或转换失败，请检查网络并重试') from e
 
 @app.post('/api/import')
 async def import_score(file: UploadFile=File(...)):

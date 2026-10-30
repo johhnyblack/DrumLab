@@ -167,3 +167,7 @@ file list/ignored data and scan for credentials. Never force-push or publish the
 user's local library. Git credentials may be unavailable on this host; the GitHub
 connector can publish Git blobs/trees/commits. Keep local and remote histories
 aligned, verify the final tree and ref, and do not store connector credentials.
+
+## Bilibili video PDF
+
+`backend/video_pdf.py` fetches public single-part BV videos and stitches vertically scrolling frames into an image PDF. It limits video duration and size and restricts accepted hosts. The result is a visual reconstruction, not MusicXML; users must review stitching and any subsequent OMR. The UI is `src/VideoPdf.tsx`. OpenCV is a backend runtime dependency.

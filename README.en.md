@@ -225,3 +225,7 @@ DrumLab uses the complete official engine through a small command-line adapter; 
 For optical PDF recognition on another machine, install a matching native package from [official releases](https://github.com/Audiveris/audiveris/releases) (5.11.0 was tested), point `AUDIVERIS_BIN` to its actual CLI executable, then start DrumLab. Follow the package's runtime requirements; neither Java nor the engine is bundled in this repository. Native Windows executables and WSL/Linux binaries are separate.
 
 The production `dist/`, licensed sample selections, fonts and small test fixtures are intentionally tracked. Local libraries, personal media/exports, runtimes, dependencies, credentials and test artifacts are excluded. Future agents should start with [AGENTS.md](AGENTS.md).
+
+## Bilibili scrolling scores to PDF
+
+Choose “B 站视频转 PDF” on the score page and enter a public, single-part Bilibili BV link. The app stitches vertically scrolling video frames into an image-based PDF that can be downloaded or imported. Videos are limited to 15 minutes. Quality depends on the available video resolution; check all pages for missing material, stitching artifacts and playback cursors. Horizontal scrolling, cuts and videos requiring login are not supported. Importing the PDF for editable notes requires Audiveris and manual review.
